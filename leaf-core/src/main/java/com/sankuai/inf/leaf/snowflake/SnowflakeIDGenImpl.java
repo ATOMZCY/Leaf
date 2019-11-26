@@ -21,11 +21,11 @@ public class SnowflakeIDGenImpl implements IDGen {
 
     private final long twepoch;
     private final long workerIdBits = 10L;
-    private final long maxWorkerId = ~(-1L << workerIdBits);//最大能够分配的workerid =1023
+    private final long maxWorkerId = ~(-1L << workerIdBits);// 最大能够分配的workerid = 1023
     private final long sequenceBits = 12L;
     private final long workerIdShift = sequenceBits;
     private final long timestampLeftShift = sequenceBits + workerIdBits;
-    private final long sequenceMask = ~(-1L << sequenceBits);
+    private final long sequenceMask = ~(-1L << sequenceBits);// 最大能够分配的序列号 = 4095
     private long workerId;
     private long sequence = 0L;
     private long lastTimestamp = -1L;
@@ -48,6 +48,7 @@ public class SnowflakeIDGenImpl implements IDGen {
         SnowflakeZookeeperHolder holder = new SnowflakeZookeeperHolder(ip, String.valueOf(port), zkAddress);
         LOGGER.info("twepoch:{} ,ip:{} ,zkAddress:{} port:{}", twepoch, ip, zkAddress, port);
         boolean initFlag = holder.init();
+        // initFlag正常启动或者非正常启动都可
         if (initFlag) {
             workerId = holder.getWorkerID();
             LOGGER.info("START SUCCESS USE ZK WORKERID-{}", workerId);
@@ -60,13 +61,16 @@ public class SnowflakeIDGenImpl implements IDGen {
     @Override
     public synchronized Result get(String key) {
         long timestamp = timeGen();
+        // 时钟问题导致现有时间落后于上一次时间，处理方法
         if (timestamp < lastTimestamp) {
             long offset = lastTimestamp - timestamp;
             if (offset <= 5) {
                 try {
+                    // 时间偏差小于5ms，等待两倍时间
                     wait(offset << 1);
                     timestamp = timeGen();
                     if (timestamp < lastTimestamp) {
+                        // 还是小于，抛异常
                         return new Result(-1, Status.EXCEPTION);
                     }
                 } catch (InterruptedException e) {
@@ -77,19 +81,25 @@ public class SnowflakeIDGenImpl implements IDGen {
                 return new Result(-3, Status.EXCEPTION);
             }
         }
+        // 毫秒内序列溢出
         if (lastTimestamp == timestamp) {
+            // sequence自增，因为sequence只有12bit，和sequenceMask想与一下，去掉高位
             sequence = (sequence + 1) & sequenceMask;
+            // 每毫秒内只有4095个数生成，如果为4096与sequenceMask想与后结果为0
             if (sequence == 0) {
-                //seq 为0的时候表示是下一毫秒时间开始对seq做随机
+                // 对sequence做随机
                 sequence = RANDOM.nextInt(100);
+                // 自旋等到新时间生成
                 timestamp = tilNextMillis(lastTimestamp);
             }
         } else {
-            //如果是新的ms开始
+            // 时间是新的开始，做随机
             sequence = RANDOM.nextInt(100);
         }
         lastTimestamp = timestamp;
+        // 拼接id流程：当前时间戳 - 起始时间戳 左移22位，机器号左移12位 序列号不移动
         long id = ((timestamp - twepoch) << timestampLeftShift) | (workerId << workerIdShift) | sequence;
+        LOGGER.info("-------------key:{}, timestamp:{}, workId:{}, sequence:{}", id, timestamp, workerId, sequence);
         return new Result(id, Status.SUCCESS);
 
     }

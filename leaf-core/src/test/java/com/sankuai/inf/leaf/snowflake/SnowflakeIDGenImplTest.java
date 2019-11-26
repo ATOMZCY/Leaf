@@ -9,11 +9,11 @@ import java.util.Properties;
 
 public class SnowflakeIDGenImplTest {
     @Test
-    public void testGetId() {
+    public void testGetId() throws Exception {
         Properties properties = PropertyFactory.getProperties();
 
-        IDGen idGen = new SnowflakeIDGenImpl(properties.getProperty("leaf.zk.list"), 8080);
-        for (int i = 1; i < 1000; ++i) {
+        IDGen idGen = new SnowflakeIDGenImpl(properties.getProperty("leaf.zk.list"), 8093);
+        for (int i = 1; i < 10; ++i) {
             Result r = idGen.get("a");
             System.out.println(r);
         }
